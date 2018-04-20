@@ -1,1 +1,84 @@
 后台主要利用PullSource周期性地向订阅了某事件的所有网页客户端推送信息。
+
+1.下载pushlet开发包，并在eclipse下新建dynamic web project。
+
+2.将pushlet.jar文件加入项目类路径（如果使用的是applet的话，还需要将pushletclient.jar设置到项目的类路径中去）；
+   pushlet.properties、log4j.properties和sources.properties放入webContent/WEB-INF下。
+
+3.在web.xml中添加pushlet的servlet声明，让其在服务器启动时就启动（load-on-startup为正数，为加载优先级别）。
+  注意：触发pushlet的servlet条件是请求pushlet.srv。
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://java.sun.com/xml/ns/javaee"
+	xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_3_0.xsd"
+	id="WebApp_ID" version="3.0">
+	<display-name>pushletTest</display-name>
+	<welcome-file-list>
+		<welcome-file>index.html</welcome-file>
+	</welcome-file-list>
+	<servlet>
+		<servlet-name>pushlet</servlet-name>
+		<servlet-class>nl.justobjects.pushlet.servlet.Pushlet</servlet-class>
+		<load-on-startup>1</load-on-startup>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>pushlet</servlet-name>
+		<url-pattern>/pushlet.srv</url-pattern>
+	</servlet-mapping>
+</web-app>
+
+4.建立推送消息源：每隔一秒向订阅了myEvent的所有前端页面推送信息，这里是一个键值对。
+  注意：需要在sources.properties声明该源（该文件现在只有这一行内容）：source1=com.zengpl.PushSource$PushSource_Key
+package com.zengpl.pushlet;
+
+import java.io.Serializable;
+import nl.justobjects.pushlet.core.Event;
+import nl.justobjects.pushlet.core.EventPullSource;
+
+public class PushSource implements Serializable {
+	public static class PushSource_Key extends EventPullSource {
+
+		@Override
+		protected long getSleepTime() {
+			// TODO Auto-generated method stub
+			return 1000;
+		}
+
+		@Override
+		protected Event pullEvent() {
+			// TODO Auto-generated method stub
+			Event event = Event.createDataEvent("myEvent");
+			event.setField("myKeyName", "myKeyValue");
+			return event;
+		}
+		
+	}
+}
+
+5.前台indext.html页面。首先，引入ajax-pushlet-client.js文件。其次初始化pushlet事件，并设置监听事件。最后将工程部署到Tomcat并启动。请求index.hmtl，就能看到myKeyValue的alert的显示了。
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>基于SpringMVC模式Pushlet推送</title>
+<script type="text/javascript" src="/js/ajax-pushlet-client.js"></script>
+<script type="text/javascript">
+PL._init();
+PL.joinListen('myEvent');
+function onData(event){
+	alert(event.get("myKeyName"))
+}
+</script>
+</head>
+<body>
+This is pushlet test page....<br>
+</body>
+</html>
+
+6.最后需要说明的是：并不一定要发布到服务器，可以将index.html和ajax-pushlet-client.js放在本地直接访问index.html。
+发布在服务器上是为了能够触发服务器上的pushlet的servlet，之后能进行心跳同步。
+
+本地访问方法：
+打开ajax-pushlet-client.js，找到PL.pushletURL = PL._getWebRoot() + 'pushlet.srv';这一行。这儿PL._getWebRoot() 是通过ajax-pushlet-client.js在服务器上的路径得到url的。
+将此行换成自己的服务器地址。如：PL.pushletURL = "http://192.168.1.101:8080/pushletTest/" + 'pushlet.srv';
+用浏览器打开本地的index.html页面。
